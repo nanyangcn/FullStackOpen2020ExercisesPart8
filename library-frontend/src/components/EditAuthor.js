@@ -7,7 +7,11 @@ import { EDIT_AUTHOR } from '../queries'
 const EditAuthor = ({ authors }) => {
   const [birthYear, setBirthYear] = useState('')
   const [selectedOption, setSelectedOption] = useState(null)
-  const [editAuthor] = useMutation(EDIT_AUTHOR)
+  const [editAuthor] = useMutation(EDIT_AUTHOR, {
+    onError: (error) => {
+      console.log(error.graphQLErrors[0].message)
+    },
+  })
 
   const handleSubmit = (event) => {
     event.preventDefault()

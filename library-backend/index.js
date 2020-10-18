@@ -15,7 +15,7 @@ const MONGODB_URI =
   'mongodb+srv://nanyangcn:nan1993yang5630@cluster0.t5hgs.mongodb.net/library-app?retryWrites=true&w=majority'
 const JWT_SECRET = 'gaipg12346fgopi*%$&#*)'
 
-console.log('connecting to', MONGODB_URI)
+console.log('connecting to MongoDB')
 
 mongoose
   .connect(MONGODB_URI, {
@@ -101,6 +101,13 @@ const resolvers = {
       const authors = await Author.find({})
       return authors
     },
+    me: async (root, args, { currentUser }) => {
+      if (!currentUser) {
+        throw new AuthenticationError('not authenticated')
+      }
+      const user = await User.findOne({ username: currentUser.username })
+      return user
+    },
   },
   Mutation: {
     addBook: async (root, args, { currentUser }) => {
@@ -110,26 +117,21 @@ const resolvers = {
 
       let author = await Author.findOne({ name: args.author })
       if (!author) {
-        const newAuthor = new Author({ name: args.author, bookCount: 1 })
-        try {
-          author = await newAuthor.save()
-        } catch (error) {
-          throw new UserInputError(error.message, {
-            invalidArgs: args,
-          })
-        }
+        author = new Author({ name: args.author, bookCount: 1 })
       } else {
         author.bookCount += 1
-        author.save()
       }
+
       const newBook = new Book({ ...args, author: author._id })
       try {
         await newBook.save()
+        await author.save()
       } catch (error) {
         throw new UserInputError(error.message, {
           invalidArgs: args,
         })
       }
+      newBook.author = author
       return newBook
     },
     editAuthor: async (root, args, { currentUser }) => {
