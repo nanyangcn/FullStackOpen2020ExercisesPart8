@@ -9,7 +9,7 @@ const EditAuthor = ({ authors }) => {
   const [selectedOption, setSelectedOption] = useState(null)
   const [editAuthor] = useMutation(EDIT_AUTHOR, {
     onError: (error) => {
-      console.log(error.graphQLErrors[0].message)
+      console.log(error)
     },
   })
 

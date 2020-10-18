@@ -5,9 +5,21 @@ import NewBook from './components/NewBook'
 import LoginForm from './components/LoginForm'
 import Recommendation from './components/Recommendation'
 
-import { useMutation, useLazyQuery, useApolloClient } from '@apollo/client'
+import {
+  useMutation,
+  useLazyQuery,
+  useApolloClient,
+  useSubscription,
+} from '@apollo/client'
 
-import { LOGIN, CREATE_BOOK, ALL_BOOKS, ALL_AUTHORS, ME } from './queries'
+import {
+  LOGIN,
+  CREATE_BOOK,
+  ALL_BOOKS,
+  ALL_AUTHORS,
+  ME,
+  BOOK_ADDED,
+} from './queries'
 
 const App = () => {
   const [page, setPage] = useState('authors')
@@ -18,6 +30,40 @@ const App = () => {
   const [loggedUser, setLoggedUser] = useState(null)
 
   const client = useApolloClient()
+
+  const updateCacheWith = (addBook) => {
+    const booksInStore = client.readQuery({ query: ALL_BOOKS })
+    if (!booksInStore.allBooks.some((book) => book.id === addBook.id)) {
+      client.writeQuery({
+        query: ALL_BOOKS,
+        data: {
+          ...booksInStore,
+          allBooks: [...booksInStore.allBooks, addBook],
+        },
+      })
+
+      const allAuthors = client.readQuery({ query: ALL_AUTHORS }).allAuthors
+      const authorsInStore = {
+        allAuthors: allAuthors.map((author) => ({ ...author })),
+      }
+      const author = authorsInStore.allAuthors.find(
+        (author) => author.name === addBook.author.name
+      )
+      if (author) {
+        author.bookCount += 1
+      } else {
+        authorsInStore.allAuthors = [
+          ...authorsInStore.allAuthors,
+          addBook.author,
+        ]
+      }
+      client.writeQuery({
+        query: ALL_AUTHORS,
+        data: authorsInStore,
+      })
+    }
+  }
+
   const [getAuthors, resultAuthors] = useLazyQuery(ALL_AUTHORS)
   const [getBooks, resultBooks] = useLazyQuery(ALL_BOOKS)
   const [getFavoriteBooks, resultFavoriteBooks] = useLazyQuery(ALL_BOOKS)
@@ -30,37 +76,18 @@ const App = () => {
   const [login] = useMutation(LOGIN)
   const [createBook] = useMutation(CREATE_BOOK, {
     update: (store, response) => {
-      const allAuthors = store.readQuery({ query: ALL_AUTHORS }).allAuthors
-      const authorsInStore = {
-        allAuthors: allAuthors.map((author) => ({ ...author })),
-      }
-      const author = authorsInStore.allAuthors.find(
-        (author) => author.name === response.data.addBook.author.name
-      )
-      if (author) {
-        author.bookCount += 1
-      } else {
-        authorsInStore.allAuthors = [
-          ...authorsInStore.allAuthors,
-          response.data.addBook.author,
-        ]
-      }
-      store.writeQuery({
-        query: ALL_AUTHORS,
-        data: authorsInStore,
-      })
-
-      const booksInStore = store.readQuery({ query: ALL_BOOKS })
-      store.writeQuery({
-        query: ALL_BOOKS,
-        data: {
-          ...booksInStore,
-          allBooks: [...booksInStore.allBooks, response.data.addBook],
-        },
-      })
+      updateCacheWith(response.data.addBook)
     },
     onError: (error) => {
       console.log(error)
+    },
+  })
+
+  useSubscription(BOOK_ADDED, {
+    onSubscriptionData: ({ subscriptionData }) => {
+      const addedBook = subscriptionData.data.bookAdded
+      window.alert(`new book ${addedBook} added`)
+      updateCacheWith(addedBook)
     },
   })
 
@@ -70,15 +97,15 @@ const App = () => {
     const token = localStorage.getItem('token')
     if (token) {
       setToken(token)
-      getLoggedUser()
     }
-  }, [getAuthors, getBooks, getLoggedUser])
+  }, [getAuthors, getBooks])
 
   useEffect(() => {
     if (resultLoggedUser.data) {
       setLoggedUser(resultLoggedUser.data.me)
+      getFavoriteBooks({ variables: { genre: loggedUser?.favoriteGenre } })
     }
-  }, [resultLoggedUser.data])
+  }, [resultLoggedUser.data, loggedUser, getFavoriteBooks])
 
   useEffect(() => {
     if (resultAuthors.data) {
@@ -123,13 +150,13 @@ const App = () => {
   const handleLogout = () => {
     client.resetStore()
     setPage('login')
-    localStorage.clear()
+    setTimeout(() => localStorage.clear(), 100)
     setToken(null)
   }
 
   const handleRecommend = () => {
+    getLoggedUser()
     setPage('recommend')
-    getFavoriteBooks({ variables: { genre: loggedUser.favoriteGenre } })
   }
 
   return (
